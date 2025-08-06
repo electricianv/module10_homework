@@ -1,0 +1,200 @@
+<!DOCTYPE html> 
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Задание 3: Чат с эхо-сервером</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 500px;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+            max-height: 600px;
+        }
+
+        .controls {
+            display: flex;
+            padding: 10px;
+            gap: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .chat-input {
+            flex-grow: 1;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            border-radius: 20px;
+            color: #fff;
+            background-color: #0d6efd;
+            transition: background-color 0.2s;
+        }
+        .btn:hover {
+            background-color: #0b5ed7;
+        }
+
+        .chat-window {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            padding: 8px 12px;
+            border-radius: 15px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+
+        .message-user {
+            background-color: #dbeaff;
+            align-self: flex-end; /* Сообщения пользователя справа */
+            text-align: right;
+        }
+
+        .message-server {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            align-self: flex-start; 
+        }
+        
+        .message-user a {
+            color: #0d6efd;
+            font-weight: bold;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="chat-container">
+        <div class="controls">
+            <input type="text" class="chat-input" id="message-input" placeholder="Здесь вводится текст сообщения">
+            <button class="btn" id="send-btn">Отправить</button>
+            <button class="btn" id="geo-btn">Гео-локация</button>
+        </div>
+        <div class="chat-window" id="chat-window">
+            </div>
+    </div>
+
+    <script>
+        const wsUrl = "wss://echo-ws-service.herokuapp.com";
+
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const geoBtn = document.getElementById('geo-btn');
+        const chatWindow = document.getElementById('chat-window');
+        
+        // --- WebSocket ---
+        
+        let websocket;
+
+        function connectWebSocket() {
+            websocket = new WebSocket(wsUrl);
+
+            websocket.onopen = function(evt) {
+                console.log("CONNECTED");
+            };
+            websocket.onclose = function(evt) {
+                console.log("DISCONNECTED");
+                setTimeout(connectWebSocket, 3000); 
+            };
+            websocket.onmessage = function(evt) {
+                // Важное условие: не выводим ответ сервера, если это геолокация
+                if (!evt.data.includes('https://www.openstreetmap.org/')) {
+                    addMessage(evt.data, 'server');
+                }
+            };
+            websocket.onerror = function(evt) {
+                console.error(`WebSocket error: ${evt.data}`);
+            };
+        }
+
+        function addMessage(text, sender) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            
+            if (sender === 'user') {
+                messageElement.classList.add('message-user');
+            } else {
+                messageElement.classList.add('message-server');
+            }
+            
+            messageElement.innerHTML = text;
+            chatWindow.appendChild(messageElement);
+            
+            // Автоматически прокручиваем чат вниз
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+        
+        sendBtn.addEventListener('click', () => {
+            const message = messageInput.value;
+            if (message.trim() !== '' && websocket.readyState === WebSocket.OPEN) {
+                addMessage(message, 'user');
+                websocket.send(message);
+                messageInput.value = ''; // Очищаем поле ввода
+            }
+        });
+        
+        // Отправка по нажатию Enter
+        messageInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                sendBtn.click();
+            }
+        });
+
+        // Клик на кнопку "Геолокация"
+        geoBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Geolocation не поддерживается вашим браузером');
+            } else {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => { // success
+                        const { latitude, longitude } = position.coords;
+                        const mapLink = `https://www.openstreetmap.org/#map=18/${latitude}/${longitude}`;
+                        
+                        const linkHtml = `<a href="${mapLink}" target="_blank">Моя геолокация</a>`;
+                        
+                        addMessage(linkHtml, 'user');
+                        websocket.send(mapLink); // Отправляем серверу саму ссылку
+                    }, 
+                    () => { // error
+                        alert('Невозможно получить ваше местоположение');
+                    }
+                );
+            }
+        });
+
+
+        connectWebSocket();
+
+    </script>
+</body>
+</html>
